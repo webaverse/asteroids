@@ -11,6 +11,7 @@ export default () => {
   const localPlayer = useLocalPlayer();
   const physics = usePhysics();
   let physicsIds = [];
+  let movingSoundAsteroids = [];
 
   const localVector = new THREE.Vector3();
   const localVector2 = new THREE.Vector3();
@@ -155,6 +156,9 @@ export default () => {
     for (const physicsId of physicsIds) {
       physics.removeGeometry(physicsId);
     }
+    for (const movingSoundAsteroid of movingSoundAsteroids) {
+      movingSoundAsteroid.sound.stop();
+    }
   });  
 
   
@@ -213,7 +217,8 @@ export default () => {
         localQuaternion.random(),
         localVector2.random().divideScalar(12)
       );
-      new MovingSoundAsteroid(app, mesh, localMatrix, localEuler, movingAsteroids, soundBuffer);
+      let movingSoundAsteroid = new MovingSoundAsteroid(app, mesh, localMatrix, localEuler, movingAsteroids, soundBuffer);
+      movingSoundAsteroids.push(movingSoundAsteroid);
     }
   };
 
