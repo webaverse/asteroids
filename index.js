@@ -17,29 +17,44 @@ export default () => {
   const localEuler = new THREE.Euler();
   const localQuaternion = new THREE.Quaternion();
   const localMatrix = new THREE.Matrix4();
-
+  const downQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI*0.5);
+  const allAsteroids = [];
+  let gltf;
+  let soundBuffer;
+  
   class Asteroid {
-    constructor(app, mesh, localMatrix) {
+    constructor(app, group, localMatrix) {
       this.app = app;
-      this.mesh = mesh.clone();
-      this.mesh.applyMatrix4(localMatrix);
-      this.app.add(this.mesh);
-      this.mesh.updateMatrixWorld();
+      this.group = group.clone();
+      this.group.applyMatrix4(localMatrix);
+      this.app.add(this.group);
+      this.group.updateMatrixWorld();
+    }
+    destroy() {
+      this.app.remove(this.group);
+      const mesh = this.group.children[0].children[0].children[0];
+      mesh.material.map.dispose();
+      mesh.material.dispose();
+      mesh.geometry.dispose();
+      if(this.sound) {
+        this.sound.stop();
+        this.sound = null;
+      }
     }
   }
 
   class PhysicalAsteroid extends Asteroid {
-    constructor(app, mesh, localMatrix, physics, physicsIds) {
-      super(app, mesh, localMatrix);
+    constructor(app, group, localMatrix, physics, physicsIds) {
+      super(app, group, localMatrix);
 
-      this.physicsId = physics.addGeometry(this.mesh);
+      this.physicsId = physics.addGeometry(this.group);
       physicsIds.push(this.physicsId);
     }
   }
 
   class MovingAsteroid extends Asteroid {
-    constructor(app, mesh, localMatrix, localEuler, movingAsteroids) {
-      super(app, mesh, localMatrix);
+    constructor(app, group, localMatrix, localEuler, movingAsteroids) {
+      super(app, group, localMatrix);
 
       this.velocityX = Math.random() ** 2;
       localEuler.set(Math.random() / 100, Math.random() / 100, Math.random() / 100, 'XYZ');
@@ -47,17 +62,17 @@ export default () => {
       movingAsteroids.push(this);
     }
     move() {
-      if(this.mesh.position.x > 300) {
-        this.mesh.position.setX(-300);
+      if(this.group.position.x > 300) {
+        this.group.position.setX(-300);
       }
-      this.mesh.position.setX(this.mesh.position.x + this.velocityX);
-      this.mesh.quaternion.premultiply(this.rotation);
+      this.group.position.setX(this.group.position.x + this.velocityX);
+      this.group.quaternion.premultiply(this.rotation);
     }
   }
 
   class MovingSoundAsteroid extends Asteroid {
-    constructor(app, mesh, localMatrix, localEuler, movingAsteroids, soundBuffer) {
-      super(app, mesh, localMatrix);
+    constructor(app, group, localMatrix, localEuler, movingAsteroids, soundBuffer) {
+      super(app, group, localMatrix);
 
       this.sound = new THREE.PositionalAudio(audioListener);
       this.sound.setBuffer(soundBuffer);
@@ -66,7 +81,7 @@ export default () => {
       this.sound.setMaxDistance( 5 );
       this.sound.setDistanceModel('exponential');
       this.sound.play();
-      this.mesh.children[0].children[0].children[0].add(this.sound);
+      this.group.children[0].children[0].children[0].add(this.sound);
 
       this.velocityX = Math.random() * 0.5 + 0.5;
       localEuler.set(Math.random() / 100, Math.random() / 100, Math.random() / 100, 'XYZ');
@@ -74,11 +89,11 @@ export default () => {
       movingAsteroids.push(this);
     }
     move() {
-      if(this.mesh.position.x > 300) {
-        this.mesh.position.setX(-300);
+      if(this.group.position.x > 300) {
+        this.group.position.setX(-300);
       }
-      this.mesh.position.setX(this.mesh.position.x + this.velocityX);
-      this.mesh.quaternion.premultiply(this.rotation);
+      this.group.position.setX(this.group.position.x + this.velocityX);
+      this.group.quaternion.premultiply(this.rotation);
     }
   }
 
@@ -127,45 +142,36 @@ export default () => {
   localPlayer.add(audioListener);
 
   (async () => {
-    let gltf = await new Promise((accept, reject) => {
+    gltf = await new Promise((accept, reject) => {
         const {gltfLoader} = useLoaders();
-        const url = 'https://patriboz.github.io/asteroids/assets/rock/scene.gltf';
+        const url = 'https://webaverse.github.io/asteroids/assets/rock/scene.gltf';
         gltfLoader.load(url, accept, function onprogress() {}, reject);
     });
 
-    let mesh = gltf.scene;
+    let group = gltf.scene;
 
-    let soundBuffer = await new Promise((accept, reject) => {
+    soundBuffer = await new Promise((accept, reject) => {
       const audioLoader = new THREE.AudioLoader();
-      const url = 'https://patriboz.github.io/asteroids/assets/audio/white-noise.mp3';
+      const url = 'https://webaverse.github.io/asteroids/assets/audio/white-noise.mp3';
       audioLoader.load(url, accept, function onprogress() {}, reject);
     });
 
     for(const asteroid of asteroids) {
       localMatrix.compose(asteroid.position, asteroid.quat, asteroid.scale);
-      new PhysicalAsteroid(app, mesh, localMatrix, physics, physicsIds);
+      const newAsteroid = new PhysicalAsteroid(app, group, localMatrix, physics, physicsIds);
+      allAsteroids.push(newAsteroid);
     }
 
-    createAsteroidField(mesh, soundBuffer);
+    createAsteroidField(group, soundBuffer);
     app.updateMatrixWorld();
   })();
 
-
-  useCleanup(() => {
-    for (const physicsId of physicsIds) {
-      physics.removeGeometry(physicsId);
-    }
-  });  
-
-  
   let lastFoundObj;
   useFrame(({ timeDiff, timestamp }) => {
 
     if(localPlayer.avatar) {
       moveAsteroids();
-
-      // https://github.com/webaverse/bridge-section/blob/main/index.js
-      const downQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI*0.5);
+      
         const resultDown = physics.raycast(localPlayer.position, downQuat);
         if(resultDown && localPlayer.characterPhysics.lastGroundedTime === timestamp) {
           let foundObj = metaversefile.getPhysicsObjectByPhysicsId(resultDown.objectId);
@@ -188,14 +194,15 @@ export default () => {
     }
   };
 
-  const createAsteroidField = (mesh, soundBuffer) => {
+  const createAsteroidField = (group, soundBuffer) => {
     for(let i = 0; i < 100; i++) {
       localMatrix.compose(
         localVector.randomDirection().multiplyScalar(100).addScalar(30),
         localQuaternion.random(),
         localVector2.random().divideScalar(10)
       );
-      new Asteroid(app, mesh, localMatrix);
+      const newAsteroid = new Asteroid(app, group, localMatrix);
+      allAsteroids.push(newAsteroid);
     }
 
     for(let i = 0; i < 80; i++) {
@@ -204,7 +211,8 @@ export default () => {
         localQuaternion.random(),
         localVector2.random().divideScalar(10)
       );
-      new MovingAsteroid(app, mesh, localMatrix, localEuler, movingAsteroids);
+      const newMovingAsteroid = new MovingAsteroid(app, group, localMatrix, localEuler, movingAsteroids);
+      allAsteroids.push(newMovingAsteroid);
     }
 
     for(let i = 0; i < 10; i++) {
@@ -213,9 +221,25 @@ export default () => {
         localQuaternion.random(),
         localVector2.random().divideScalar(12)
       );
-      new MovingSoundAsteroid(app, mesh, localMatrix, localEuler, movingAsteroids, soundBuffer);
+      const newSoundAsteroid = new MovingSoundAsteroid(app, group, localMatrix, localEuler, movingAsteroids, soundBuffer);
+      allAsteroids.push(newSoundAsteroid);
     }
   };
+
+  useCleanup(() => {
+    const mesh = gltf.scene.children[0].children[0].children[0];
+    mesh.material.map.dispose();
+    mesh.material.dispose();
+    mesh.geometry.dispose();
+    for(const asteroid of allAsteroids) {
+      asteroid.destroy();
+    }
+    for (const physicsId of physicsIds) {
+      physics.removeGeometry(physicsId);
+    }
+    soundBuffer = null;
+    localPlayer.remove(audioListener);
+  }); 
 
   return app;
 };
