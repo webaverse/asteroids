@@ -182,7 +182,7 @@ export default () => {
 
       // Resets character position to spawn position
       if(localPlayer.position.y < -70) {
-        physics.setCharacterControllerPosition(localPlayer.characterController, defaultSpawn);
+        physics.setCharacterControllerPosition(localPlayer.characterPhysics.characterController, defaultSpawn);
       }
     }
     app.updateMatrixWorld();
